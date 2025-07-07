@@ -1,4 +1,5 @@
 import random
+import json
 
 class Player:
     """
@@ -187,6 +188,7 @@ def main():
     # Payoff matrices
     payoff_p1 = [[3, 0], [5, 1]] #player 1 perspective
     payoff_p2 = [[3, 0], [5, 1]] #player 2 perspective
+    discount_factor = 0.95
 
     players = [
         Player("CooperateBot", [always_cooperate] * 6),
@@ -195,9 +197,10 @@ def main():
         Player("RandomBot", [random_strategy] * 6)
     ]
 
-    t = Tournament(players, [payoff_p1, payoff_p2], discount_factor=0.95)
+    t = Tournament(players, [payoff_p1, payoff_p2], discount_factor)
     results = t.tournament(rounds=5)
-    print_tournament_scores(players, results)
+    print_tournament_scores(players,results)
+    save_tournament_to_json(players,results,discount_factor, payoff_p1, payoff_p2)
 
 
 # --- Helper Function ---
@@ -226,6 +229,45 @@ def print_tournament_scores(players, scoreboard):
                     p1_total = sum(scoreboard[i][j][mode])
                     p2_total = sum(scoreboard[j][i][mode])
                     print(f"  Game Mode {mode} - {mode_names[mode]}: {p1_total:.2f} - {p2_total:.2f}")
+
+
+def save_tournament_to_json(players, scoreboard,discount ,payoff_p1,payoff_p2, filename="tournament_scores.json"):
+    """
+    Serializes the tournament scoreboard into a structured JSON file.
+
+    Args:
+        players (list): List of Player objects.
+        scoreboard (3D list): Output of Tournament.tournament()
+        filename (str): Path to output JSON file.
+    """
+    data = {
+        "players": [p.teamname for p in players],
+        "discount":[discount],
+        "payoff_player1":[payoff_p1],
+        "payoff_player2":[payoff_p2] ,
+        "results": []
+    }
+
+    n = len(players)
+    for i in range(n):
+        for j in range(i + 1, n):
+            match_entry = {
+                "player1": players[i].teamname,
+                "player2": players[j].teamname,
+                "modes": []
+            }
+            for mode in range(6):
+                mode_entry = {
+                    "mode": mode,
+                    "scores_p1": scoreboard[i][j][mode],
+                    "scores_p2": scoreboard[j][i][mode]
+                }
+                match_entry["modes"].append(mode_entry)
+            data["results"].append(match_entry)
+
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=2)
+
 
 
 # --- Entry Point ---

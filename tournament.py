@@ -14,23 +14,33 @@ class Player:
         self.teamname = teamname
         self.strategies = strategies
 
-    def play(self, prev_move=None, game_mode=0, discount=1.0):
+    def play(self, payoff_matrices, prev_move=None, game_mode=0, discount=1.0):
         """
-        Selects an action based on the assigned strategy for the game mode.
+        Select an action based on the player's strategy for the specified game mode.
 
         Args:
-            prev_move (int or None): The previous move of the opponent (0 or 1), or None.
-            game_mode (int): Game mode index (0 to 3).
-            discount (float): Discount factor for future rounds (only used in discounted modes).
+            payoff_matrices (list of list of list): Two 2 2 payoff matrices 
+                [matrix_for_player1, matrix_for_player2], used by some strategies.
+            prev_move (int or None): Opponent's previous action (0 = cooperate, 1 = defect),
+                or None if there is no prior move.
+            game_mode (int): Index of the game mode (0 through 5):
+                0  Blind Iterative  
+                1  Iterated with Memory  
+                2  Discounted Blind Iterative  
+                3  Discounted Iterated with Memory  
+                4  Blind Stochastic Game  
+                5  Memory Stochastic Game
+            discount (float): Discount factor for future payoffs (used in modes 2 5).
 
         Returns:
-            int: The selected move (0 = cooperate, 1 = defect).
+            int: Chosen action (0 = cooperate, 1 = defect).
         """
         strategy_fn = self.strategies[game_mode]
-        if game_mode in [1, 3,5]:  # Memory-based
-            return strategy_fn(prev_move, discount)
-        else:  # Blind
-            return strategy_fn(discount)
+        if game_mode in [1, 3, 5]:  # memory-based modes
+            return strategy_fn(prev_move, discount, payoff_matrices)
+        else:  # blind modes
+            return strategy_fn(discount, payoff_matrices)
+
 
 
 class Tournament:
@@ -69,10 +79,10 @@ class Tournament:
         Returns:
             tuple: move1, move2, payoff1, payoff2
         """
-        move1 = player1.play(prev_move=prev2, game_mode=game_mode, discount=discount)
-        move2 = player2.play(prev_move=prev1, game_mode=game_mode, discount=discount)
+        move1 = player1.play(self.payoff_matrices ,prev_move=prev2, game_mode=game_mode, discount=discount)
+        move2 = player2.play(self.payoff_matrices,prev_move=prev1, game_mode=game_mode, discount=discount)
         payoff1 = self.payoff_matrices[0][move1][move2]
-        payoff2 = self.payoff_matrices[1][move2][move1]
+        payoff2 = self.payoff_matrices[1][move1][move2]
         return move1, move2, payoff1, payoff2
 
     def blindplay(self, player1, player2, game_mode, discount=1.0):
@@ -87,10 +97,10 @@ class Tournament:
         Returns:
             tuple: move1, move2, payoff1, payoff2
         """
-        move1 = player1.play(game_mode=game_mode, discount=discount)
-        move2 = player2.play(game_mode=game_mode, discount=discount)
+        move1 = player1.play(self.payoff_matrices, game_mode=game_mode, discount=discount)
+        move2 = player2.play(self.payoff_matrices ,game_mode=game_mode, discount=discount)
         payoff1 = self.payoff_matrices[0][move1][move2]
-        payoff2 = self.payoff_matrices[1][move2][move1]
+        payoff2 = self.payoff_matrices[1][move1][move2]
         return move1, move2, payoff1, payoff2
 
     def evaluate(self, player1, player2, rounds=10):
@@ -170,7 +180,7 @@ def always_defect(*args):
     """Always plays defect (1)."""
     return 1
 
-def tit_for_tat(prev, discount):
+def tit_for_tat(prev, discount ,payoff_matrices):
     """Plays opponent's previous move; cooperates on first move."""
     return prev if prev is not None else 0
 
@@ -179,28 +189,6 @@ def random_strategy(*args):
     return random.choice([0, 1])
 
 
-# --- Main Function ---
-def main():
-    """
-    Sets up a sample tournament between predefined bots with different strategies
-    and prints results across all game modes.
-    """
-    # Payoff matrices
-    payoff_p1 = [[3, 0], [5, 1]] #player 1 perspective
-    payoff_p2 = [[3, 0], [5, 1]] #player 2 perspective
-    discount_factor = 0.95
-
-    players = [
-        Player("CooperateBot", [always_cooperate] * 6),
-        Player("DefectBot", [always_defect] * 6),
-        Player("TFT", [always_cooperate, tit_for_tat, always_cooperate, tit_for_tat,always_cooperate,tit_for_tat]),
-        Player("RandomBot", [random_strategy] * 6)
-    ]
-
-    t = Tournament(players, [payoff_p1, payoff_p2], discount_factor)
-    results = t.tournament(rounds=5)
-    print_tournament_scores(players,results)
-    save_tournament_to_json(players,results,discount_factor, payoff_p1, payoff_p2)
 
 
 # --- Helper Function ---
@@ -267,6 +255,31 @@ def save_tournament_to_json(players, scoreboard,discount ,payoff_p1,payoff_p2, f
 
     with open(filename, "w") as f:
         json.dump(data, f, indent=2)
+
+# --- Main Function ---
+def main():
+    """
+    Sets up a sample tournament between predefined bots with different strategies
+    and prints results across all game modes.
+    """
+    # Payoff matrices
+    payoff_p1 = [[3, 0], [5, 1]] #player 1 perspective
+    payoff_p2 = [[3, 5], [0, 1]] #from player 1 perspective
+    discount_factor = 0.95
+
+    players = [
+        Player("CooperateBot", [always_cooperate] * 6),
+        Player("DefectBot", [always_defect] * 6),
+        Player("TFT", [always_cooperate, tit_for_tat, always_cooperate, tit_for_tat,always_cooperate,tit_for_tat]),
+        Player("RandomBot", [random_strategy] * 6)
+    ]
+
+    t = Tournament(players, [payoff_p1, payoff_p2], discount_factor)
+    results = t.tournament(rounds=5)
+    print_tournament_scores(players,results)
+    save_tournament_to_json(players,results,discount_factor, payoff_p1, payoff_p2)
+
+
 
 
 

@@ -27,6 +27,7 @@ def strategy1(history, myhistory, discount, payoff_matrices):
     Returns:
         int: 0 = cooperate, 1 = defect.
     """
+    last = history[-1] if history else None
     return 0 or 1
 
 
@@ -57,7 +58,7 @@ def strategy3(history, myhistory, discount, payoff_matrices):
     Returns:
         int: 0 = cooperate, 1 = defect.
     """
-    
+    last = history[-1] if history else None
     return 0 or 1
 
 
@@ -72,6 +73,7 @@ def strategy4(discount, payoff_matrices):
     Returns:
         int: 0 = cooperate, 1 = defect.
     """
+    
     return 0 or 1
 
 
@@ -88,6 +90,7 @@ def strategy5(history, myhistory, discount, payoff_matrices):
     Returns:
         int: 0 = cooperate, 1 = defect.
     """
+    last = history[-1] if history else None
     return 0 or 1
 
 

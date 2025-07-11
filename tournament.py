@@ -3,286 +3,211 @@ import json
 
 class Player:
     """
-    Represents a player in the game with a team name and strategy functions for each game mode.
-    
+    Represents a player in the Iterated Prisoner's Dilemma tournament.
+
     Attributes:
-        teamname (str): Name of the player's team.
-        strategies (list): A list of 6 strategy functions corresponding to each game mode.
+        teamname (str): The player's team name.
+        strategies (list[callable]): List of 6 strategy functions, one per game mode.
     """
 
     def __init__(self, teamname, strategies):
         self.teamname = teamname
         self.strategies = strategies
 
-    def play(self, payoff_matrices, prev_move=None, game_mode=0, discount=1.0):
+    def play(self, payoff_matrices, history=None, myhistory=None, game_mode=0, discount=1.0):
         """
-        Select an action based on the player's strategy for the specified game mode.
+        Choose an action based on the assigned strategy for the specified game mode.
 
         Args:
-            payoff_matrices (list of list of list): Two 2 2 payoff matrices 
-                [matrix_for_player1, matrix_for_player2], used by some strategies.
-            prev_move (int or None): Opponent's previous action (0 = cooperate, 1 = defect),
-                or None if there is no prior move.
-            game_mode (int): Index of the game mode (0 through 5):
-                0  Blind Iterative  
-                1  Iterated with Memory  
-                2  Discounted Blind Iterative  
-                3  Discounted Iterated with Memory  
-                4  Blind Stochastic Game  
-                5  Memory Stochastic Game
-            discount (float): Discount factor for future payoffs (used in modes 2 5).
+            payoff_matrices (list[list[list[float]]]): Two 2x2 payoff matrices for player1 and player2,
+                structured as [matrix_p1, matrix_p2].
+            history (list[int] | None): Opponent's past moves (0=cooperate, 1=defect).
+            myhistory (list[int] | None): Player's own past moves.
+            game_mode (int): Index of game mode (0–5):
+                0: Blind Iterative (no memory, no discount)
+                1: Iterated with Memory (remembers last move, no discount)
+                2: Discounted Blind (no memory, geometric discount)
+                3: Discounted Memory (last move, geometric discount)
+                4: Stochastic Blind (probabilistic continuation, no memory)
+                5: Stochastic Memory (probabilistic continuation, memory)
+            discount (float): Discount factor for future payoffs or continuation probability.
 
         Returns:
             int: Chosen action (0 = cooperate, 1 = defect).
         """
         strategy_fn = self.strategies[game_mode]
-        if game_mode in [1, 3, 5]:  # memory-based modes
-            return strategy_fn(prev_move, discount, payoff_matrices)
-        else:  # blind modes
-            return strategy_fn(discount, payoff_matrices)
-
-
+        # Memory-based modes expect (history, myhistory, discount, payoff_matrices)
+        if game_mode in [1, 3, 5]:
+            return strategy_fn(history, myhistory, discount, payoff_matrices)
+        # Blind modes expect (discount, payoff_matrices)
+        return strategy_fn(discount, payoff_matrices)
 
 class Tournament:
     """
-    Manages a round-robin tournament of players across multiple game modes.
+    Conducts a round-robin tournament between players over six IPD game modes.
 
     Attributes:
-        players (list): List of Player objects.
-        payoff_matrices (list): [Player1 matrix, Player2 matrix], each a 2x2 payoff matrix.
-        discount_factor (float): Discount factor used in game modes 2 and 3 , 4 ,5`~.
+        players (list[Player]): List of participants.
+        payoff_matrices (list[list[list[float]]]): Payoff matrices for all matches.
+        discount_factor (float): Discount factor for discounted and stochastic modes.
     """
 
-    def __init__(self, players, payoff_matrices, discount_factor):
-        """
-        Initialize the tournament.
-
-        Args:
-            players (list): List of Player objects.
-            payoff_matrices (list): [Player1 matrix, Player2 matrix].
-            discount_factor (float): Discount factor for discounted games.
-        """
+    def __init__(self, players, payoff_matrices, discount_factor=1.0):
         self.players = players
         self.payoff_matrices = payoff_matrices
         self.discount_factor = discount_factor
 
-    def play(self, player1, player2, game_mode, prev1, prev2, discount=1.0):
+    def play_round(self, player1, player2, game_mode, history1, history2, discount):
         """
-        Play a round with memory of previous moves.
+        Play one iterated round where strategies can use memory.
 
         Args:
-            player1, player2 (Player): The two players.
-            game_mode (int): Mode index.
-            prev1, prev2 (int): Previous moves of players.
-            discount (float): Discount factor.
+            player1, player2 (Player): Competitors.
+            game_mode (int): Mode index (0–5).
+            history1, history2 (list[int]): Past moves of each player.
+            discount (float): Discount factor or continuation probability.
 
         Returns:
-            tuple: move1, move2, payoff1, payoff2
+            tuple[int, int, float, float]: (move1, move2, payoff1, payoff2).
         """
-        move1 = player1.play(self.payoff_matrices ,prev_move=prev2, game_mode=game_mode, discount=discount)
-        move2 = player2.play(self.payoff_matrices,prev_move=prev1, game_mode=game_mode, discount=discount)
-        payoff1 = self.payoff_matrices[0][move1][move2]
-        payoff2 = self.payoff_matrices[1][move1][move2]
-        return move1, move2, payoff1, payoff2
+        move1 = player1.play(self.payoff_matrices, history2, history1, game_mode, discount)
+        move2 = player2.play(self.payoff_matrices, history1, history2, game_mode, discount)
+        p1 = self.payoff_matrices[0][move1][move2]
+        p2 = self.payoff_matrices[1][move1][move2]
+        return move1, move2, p1, p2
 
-    def blindplay(self, player1, player2, game_mode, discount=1.0):
+    def blind_round(self, player1, player2, game_mode, discount):
         """
-        Play a round without memory.
+        Play one iterated round without memory dependence.
 
         Args:
-            player1, player2 (Player): The two players.
-            game_mode (int): Mode index.
-            discount (float): Discount factor.
+            player1, player2 (Player): Competitors.
+            game_mode (int): Mode index (0–5).
+            discount (float): Discount factor (unused in payoff but for consistency).
 
         Returns:
-            tuple: move1, move2, payoff1, payoff2
+            tuple[int, int, float, float]: (move1, move2, payoff1, payoff2).
         """
         move1 = player1.play(self.payoff_matrices, game_mode=game_mode, discount=discount)
-        move2 = player2.play(self.payoff_matrices ,game_mode=game_mode, discount=discount)
-        payoff1 = self.payoff_matrices[0][move1][move2]
-        payoff2 = self.payoff_matrices[1][move1][move2]
-        return move1, move2, payoff1, payoff2
+        move2 = player2.play(self.payoff_matrices, game_mode=game_mode, discount=discount)
+        p1 = self.payoff_matrices[0][move1][move2]
+        p2 = self.payoff_matrices[1][move1][move2]
+        return move1, move2, p1, p2
 
     def evaluate(self, player1, player2, rounds=10):
         """
-        Evaluate two players across 6 game modes of the Iterated Prisoner's Dilemma.
+        Run an iterated match between two players across all six modes.
 
-        Game Modes:
-        - Mode 0: Blind Iterative (no memory, no discount)
-        - Mode 1: Iterated with Memory (remembers opponent's previous move, no discounting)
-        - Mode 2: Discounted Blind Iterated (no memory, geometric discounting over time)
-        - Mode 3: Discounted Iterated with Memory (remembers opponent's previous move, with discounting)
-        - Mode 4: Blind Stochastic Game (no memory, probabilistic continuation)
-        - Mode 5: Memory Stochastic Game (remembers opponent's previous move, probabilistic continuation)
+        Args:
+            player1, player2 (Player): Competitors.
+            rounds (int): Fixed rounds for non-stochastic modes.
 
         Returns:
-            tuple: score1, score2 — 2D lists of scores per mode and round.
+            tuple[list[list[float]], list[list[float]]]: Scores per mode per round for each player.
         """
-        score1 = [[] for _ in range(6)]
-        score2 = [[] for _ in range(6)]
-
+        scores1 = [[] for _ in range(6)]
+        scores2 = [[] for _ in range(6)]
         for mode in range(6):
-            discount = 1.0 if mode in [0, 1] else self.discount_factor
-            prev1 = None
-            prev2 = None
+            disc = self.discount_factor if mode not in [0, 1] else 1.0
+            h1, h2 = [], []
             r = 0
-
             while True:
-                if mode in [4, 5] and r > 0 and random.random() > discount:
-                    break  # Stop stochastic game with probability (1 - discount)
-                if mode in [0, 2, 4]:  # Blind modes
-                    move1, move2, p1, p2 = self.blindplay(player1, player2, mode, discount)
-                else:  # Memory-based modes
-                    move1, move2, p1, p2 = self.play(player1, player2, mode, prev1, prev2, discount)
-                    prev1, prev2 = move1, move2
-
-                power = 1.0 if mode in [0, 1, 4, 5] else discount ** r
-                score1[mode].append(p1 * power)
-                score2[mode].append(p2 * power)
-
+                # Break for stochastic modes with probability (1 - disc) after first round
+                if mode in [4, 5] and r > 0 and random.random() > disc:
+                    break
+                if mode in [0, 2, 4]:
+                    m1, m2, p1, p2 = self.blind_round(player1, player2, mode, disc)
+                else:
+                    m1, m2, p1, p2 = self.play_round(player1, player2, mode, h1, h2, disc)
+                    h1.append(m1)
+                    h2.append(m2)
+                weight = 1.0 if mode in [0, 1, 4, 5] else (disc ** r)
+                scores1[mode].append(p1 * weight)
+                scores2[mode].append(p2 * weight)
                 r += 1
                 if mode in [0, 1, 2, 3] and r >= rounds:
                     break
-
-        return score1, score2
-
+        return scores1, scores2
 
     def tournament(self, rounds=10):
         """
-        Run a full round-robin tournament between all players.
-
-        Each player pair is evaluated across all 4 game modes.
+        Conduct a full round-robin tournament over all player pairs.
 
         Args:
-            rounds (int): Number of rounds per game mode.
+            rounds (int): Number of rounds for fixed-length modes.
 
         Returns:
-            3D list: scoreboard[i][j][mode] is the score list of player i vs j in mode.
+            list[list[list[list[float]]]]: 4D list where [i][j][mode] is score list of player i vs j.
         """
         n = len(self.players)
-        scoreboard = [[[[] for _ in range(6)] for _ in range(n)] for _ in range(n)]
-
+        board = [[[[] for _ in range(6)] for _ in range(n)] for _ in range(n)]
         for i in range(n):
-            for j in range(i + 1, n):
+            for j in range(i+1, n):
                 s1, s2 = self.evaluate(self.players[i], self.players[j], rounds)
-                scoreboard[i][j] = s1
-                scoreboard[j][i] = s2
-
-        return scoreboard
-
-
-# --- Strategy Functions ---
-def always_cooperate(*args):
-    """Always plays cooperate (0)."""
-    return 0
-
-def always_defect(*args):
-    """Always plays defect (1)."""
-    return 1
-
-def tit_for_tat(prev, discount ,payoff_matrices):
-    """Plays opponent's previous move; cooperates on first move."""
-    return prev if prev is not None else 0
-
-def random_strategy(*args):
-    """Randomly chooses between cooperate (0) and defect (1)."""
-    return random.choice([0, 1])
+                board[i][j] = s1
+                board[j][i] = s2
+        return board
 
 
 
+class Helper:
+    @staticmethod
+    def print_tournament_scores(players, board):
+        """
+        Print match summaries for each player pair across all modes.
 
-# --- Helper Function ---
-def print_tournament_scores(players, scoreboard):
-    """
-    Prints human-readable tournament results.
+        Args:
+            players (list[Player]): Competitors.
+            board (4D list): Tournament scores from Tournament.tournament().
+        """
+        mode_names = [
+            "Blind Iterative",
+            "Memory Iterative",
+            "Discounted Blind",
+            "Discounted Memory",
+            "Stochastic Blind",
+            "Stochastic Memory"
+        ]
+        n = len(players)
+        for i in range(n):
+            for j in range(n):
+                if i == j:
+                    continue
+                print(f"{players[i].teamname} vs {players[j].teamname}:")
+                for m, name in enumerate(mode_names):
+                    total1 = sum(board[i][j][m])
+                    total2 = sum(board[j][i][m])
+                    print(f"  Mode {m} ({name}): {total1:.2f} - {total2:.2f}")
+    @staticmethod
+    def save_tournament_to_json(players, board, discount, payoff_p1, payoff_p2, filename="tournament_scores.json"):
+        """
+        Save the full tournament results to a JSON file.
 
-    Args:
-        players (list): Player objects.
-        scoreboard (list): 3D scores from tournament.
-    """
-    mode_names = [
-        "Blind Iterative (No Memory, No Discount)",
-        "Memory Iterative (No Discount)",
-        "Discounted Blind Iterative",
-        "Discounted Memory Iterative",
-        "Stochastic Blind (Probabilistic Rounds, No Memory)",
-        "Stochastic Memory (Probabilistic Rounds with Memory)"
-    ]
-    n = len(players)
-    for i in range(n):
-        for j in range(n):
-            if i != j:
-                print(f"\nMatch: {players[i].teamname} vs {players[j].teamname}")
-                for mode in range(6):
-                    p1_total = sum(scoreboard[i][j][mode])
-                    p2_total = sum(scoreboard[j][i][mode])
-                    print(f"  Game Mode {mode} - {mode_names[mode]}: {p1_total:.2f} - {p2_total:.2f}")
+        Args:
+            players (list[Player]): Competitors.
+            board (4D list): Results from Tournament.tournament().
+            discount (float): Discount factor used.
+            payoff_p1, payoff_p2 (list[list[int]]): Payoff matrices.
+            filename (str): Output path.
+        """
+        data = {
+            "players": [p.teamname for p in players],
+            "discount": discount,
+            "payoff_player1": payoff_p1,
+            "payoff_player2": payoff_p2,
+            "results": []
+        }
+        n = len(players)
+        for i in range(n):
+            for j in range(i+1, n):
+                entry = {"player1": players[i].teamname, "player2": players[j].teamname, "modes": []}
+                for m in range(6):
+                    entry["modes"].append({
+                        "mode": m,
+                        "scores_p1": board[i][j][m],
+                        "scores_p2": board[j][i][m]
+                    })
+                data["results"].append(entry)
+        with open(filename, "w") as f:
+            json.dump(data, f, indent=2)
 
-
-def save_tournament_to_json(players, scoreboard,discount ,payoff_p1,payoff_p2, filename="tournament_scores.json"):
-    """
-    Serializes the tournament scoreboard into a structured JSON file.
-
-    Args:
-        players (list): List of Player objects.
-        scoreboard (3D list): Output of Tournament.tournament()
-        filename (str): Path to output JSON file.
-    """
-    data = {
-        "players": [p.teamname for p in players],
-        "discount":[discount],
-        "payoff_player1":[payoff_p1],
-        "payoff_player2":[payoff_p2] ,
-        "results": []
-    }
-
-    n = len(players)
-    for i in range(n):
-        for j in range(i + 1, n):
-            match_entry = {
-                "player1": players[i].teamname,
-                "player2": players[j].teamname,
-                "modes": []
-            }
-            for mode in range(6):
-                mode_entry = {
-                    "mode": mode,
-                    "scores_p1": scoreboard[i][j][mode],
-                    "scores_p2": scoreboard[j][i][mode]
-                }
-                match_entry["modes"].append(mode_entry)
-            data["results"].append(match_entry)
-
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=2)
-
-# --- Main Function ---
-def main():
-    """
-    Sets up a sample tournament between predefined bots with different strategies
-    and prints results across all game modes.
-    """
-    # Payoff matrices
-    payoff_p1 = [[3, 0], [5, 1]] #player 1 perspective
-    payoff_p2 = [[3, 5], [0, 1]] #from player 1 perspective
-    discount_factor = 0.95
-
-    players = [
-        Player("CooperateBot", [always_cooperate] * 6),
-        Player("DefectBot", [always_defect] * 6),
-        Player("TFT", [always_cooperate, tit_for_tat, always_cooperate, tit_for_tat,always_cooperate,tit_for_tat]),
-        Player("RandomBot", [random_strategy] * 6)
-    ]
-
-    t = Tournament(players, [payoff_p1, payoff_p2], discount_factor)
-    results = t.tournament(rounds=5)
-    print_tournament_scores(players,results)
-    save_tournament_to_json(players,results,discount_factor, payoff_p1, payoff_p2)
-
-
-
-
-
-# --- Entry Point ---
-if __name__ == "__main__":
-    main()

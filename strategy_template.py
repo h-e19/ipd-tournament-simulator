@@ -94,22 +94,3 @@ def strategy5(history, myhistory, discount, payoff_matrices):
     return 0 or 1
 
 
-# --- Generic Template ---
-
-def strategy(payoff_matrices, *args):
-    """
-    Generic Strategy Template
-
-    A flexible strategy function that accepts the payoff matrices and optional
-    mode-specific arguments like `history` or `discount`, but ignores them.
-
-    Args:
-        payoff_matrices (list of list of list): Two 2x2 payoff matrices:
-            - payoff_matrices[0][move1][move2] is this player's payoff.
-            - payoff_matrices[1][move1][move2] is the opponent's payoff.
-        *args: Optional additional arguments for compatibility with any game mode.
-
-    Returns:
-        int: 0 for cooperate, 1 for defect.
-    """
-    return 0 or 1
